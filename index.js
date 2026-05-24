@@ -57,6 +57,10 @@ async function run() {
    const destinationCollection = db.collection("destinations");
    const bookingCollection = db.collection("bookings")
 
+   app.get('/featured', async (req ,res)=> {
+    const result = await destinationCollection.find().limit(3).toArray();
+    res.json(result)
+   })
    app.get('/destinations', async(req, res)=> {
     const result = await destinationCollection.find().toArray()
     res.json(result)
