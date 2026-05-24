@@ -8,7 +8,8 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const app = express();
-const cors = require('cors')
+const cors = require('cors');
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 app.use(cors());
 app.use(express.json());
 
@@ -23,9 +24,34 @@ const client = new MongoClient(uri, {
   },
 });
 
+const JWKS = createRemoteJWKSet((
+  new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
+))
+
+const verifyToken = async (req, res, next)=> {
+    const authHeader = req?.headers.authorization
+    if(!authHeader) {
+      return res.status(401).json({message : "Unauthorized"})
+    }
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({message : "Unauthorized"})
+    }
+    console.log(token)
+
+    try {
+       const { payload } = await jwtVerify(token, JWKS,)
+       console.log(payload)
+       next()
+    } catch (error) {
+      return res.status(403).json({message : "Forbidden"})
+    }
+   }
+
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
    const db = client.db("wanderlustDB")
    const destinationCollection = db.collection("destinations");
@@ -36,15 +62,7 @@ async function run() {
     res.json(result)
    })
    
-   app.get('/destinations/:id', (req, res, next)=> {
-    const header = req.headers.authorization
-    if(header === "logged in") {
-      next()
-    }
-    else {
-      res.status(401).json({message : "Unauthorized"})
-    }
-   }, async (req, res)=> {
+   app.get('/destinations/:id',verifyToken, async (req, res)=> {
     const id = req.params.id;
     const query = {
       _id :  new ObjectId(id)
@@ -63,7 +81,7 @@ async function run() {
     res.json(result)
    });
 
-   app.delete('/destinations/:id', async (req, res) => {
+   app.delete('/destinations/:id',verifyToken, async (req, res) => {
     const id = req.params.id;
     const query = {
       _id : new ObjectId(id)
@@ -72,13 +90,13 @@ async function run() {
     res.send(result)
    })
 
-   app.post('/destinations', async(req, res) => {
+   app.post('/destinations',verifyToken, async(req, res) => {
     const destinationData = req.body
     const result = await destinationCollection.insertOne(destinationData)
     res.json(result)
    });
 
-   app.post('/bookings', async(req, res)=> {
+   app.post('/bookings',verifyToken, async(req, res)=> {
     const bookingData = req.body
     const result = await bookingCollection.insertOne(bookingData);
     res.json(result)
@@ -90,7 +108,7 @@ async function run() {
     res.json(result)
    })
 
-   app.delete('/bookings/:bookingId', async (req, res)=> {
+   app.delete('/bookings/:bookingId',verifyToken, async (req, res)=> {
     const {bookingId} = req.params;
     const query = {
       _id : new ObjectId(bookingId)
@@ -99,7 +117,7 @@ async function run() {
     res.json(result)
    })
 
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
 
     console.log("Connected to MongoDB");
   } catch (error) {
